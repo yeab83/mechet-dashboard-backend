@@ -9,7 +9,7 @@ const Busrouter = Router();
 Busrouter.get('/', getBuses);
 Busrouter.get('/:id', getBusById);
 Busrouter.post('/', createBus);
-Busrouter.put('/:id',updateBus);
+Busrouter.patch('/:id',updateBus);
 Busrouter.delete('/:id', deleteBus);
 
 
