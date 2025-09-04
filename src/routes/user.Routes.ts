@@ -1,7 +1,6 @@
 // routes/user.route.ts
 import { Router } from "express";
-import User from "../models/User";
-import bcrypt from "bcrypt";
+;
 
 import {  deleteUser, getUsers, login, register, updateUser } from "../controllers/user.Controller";
 

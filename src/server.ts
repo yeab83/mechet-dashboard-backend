@@ -7,6 +7,7 @@ import roleRoutes from "./routes/role.Routes";
 import busRoutes from "./routes/bus.routes";
 import routingRoutes from "./routes/routing.Routes";
 import cityrouter from "./routes/city.routes";
+import Voyagerouter from "./routes/voyage.routes";
 
 dotenv.config();
 const app = express();
@@ -23,6 +24,7 @@ app.use("/api/roles", roleRoutes);
 app.use("/api/buses", busRoutes);
 app.use("/api/routings", routingRoutes);
 app.use("/api/cities", cityrouter);
+app.use("/api/voyage", Voyagerouter);
 
 const PORT = Number(process.env.PORT) || 3000;
 const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/mechet-dashboard";
