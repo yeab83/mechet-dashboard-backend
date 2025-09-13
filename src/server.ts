@@ -10,6 +10,7 @@ import cityrouter from "./routes/city.routes";
 import Voyagerouter from "./routes/voyage.routes";
 import Voyageselection from "./routes/VoyageSelection.routes";
 import seatRoutes from "./routes/seat.routes";
+import PassengerDetails from "./routes/PassengerDetails.routes";
 
 
 dotenv.config();
@@ -30,6 +31,7 @@ app.use("/api/cities", cityrouter);
 app.use("/api/voyage", Voyagerouter);
 app.use("/api/voyageselection", Voyageselection);
 app.use("/api/seats", seatRoutes);
+app.use("/api/passengerdetails", PassengerDetails);
 
 const PORT = Number(process.env.PORT) || 3000;
 const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/mechet-dashboard";
