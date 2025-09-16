@@ -1,23 +1,20 @@
-import express from "express";
-import { 
-  createPassengerInfo, 
-  getPassengerInfo, 
-  updatePassengerInfo, 
-  deletePassengerInfo, 
-  getVoyagePassengers,
-  createTickets, 
-  getTickets 
-} from "../controllers/PassengerDetails.Controller";
+// routes/passengerRoutes.ts
+import express from 'express';
+import {
+  createPassenger,
+  getAllPassengers,
+  getPassengersByVoyage
+} from '../controllers/PassengerDetails.Controller';
 
-const PassengerDetails = express.Router();
+const router = express.Router();
 
-// New passenger information endpoints (UI provides voyageId and seatNumber in body)
-PassengerDetails.post("/", createPassengerInfo);
-PassengerDetails.get("/", getPassengerInfo);
-PassengerDetails.patch("/update", updatePassengerInfo);
-PassengerDetails.delete("/delete", deletePassengerInfo);
+// POST /api/passengerdetails - Create a new passenger
+router.post('/', createPassenger);
 
+// GET /api/passengerdetails - Get all passengers
+router.get('/', getAllPassengers);
 
-// Legacy endpoints for backward compatibility
+// GET /api/passengerdetails/voyage/:voyageId - Get passengers by voyage
+router.get('/voyage/:voyageId', getPassengersByVoyage);
 
-export default PassengerDetails;
+export default router;

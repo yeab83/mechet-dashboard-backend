@@ -1,9 +1,9 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface IVoyageSelection extends Document {
+  voyage: mongoose.Types.ObjectId;
   busPlateNo: string;
   driver: string;
-  routeName: string;
   departureTime: Date;
   arrivalTime: Date;
   validator: string;
@@ -13,9 +13,9 @@ export interface IVoyageSelection extends Document {
 }
 
 const voyageSelectionSchema = new Schema<IVoyageSelection>({
+  voyage: { type: Schema.Types.ObjectId, ref: 'Voyage', required: true },
   busPlateNo: { type: String, required: true },
   driver: { type: String, required: true },
-  routeName: { type: String, required: true },
   departureTime: { type: Date, required: true },
   arrivalTime: { type: Date, required: true },
   validator: { type: String },

@@ -25,20 +25,36 @@ export const createSeats = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Seats already exist for this voyage" });
     }
 
-    // Create seats array (A1-A10, B1-B10, C1-C10, D1-D10, E1-E10)
+    // Create seats array to match UI layout:
+    // Rows 1-9: A1-B1, C1-D1 (4 seats per row)
+    // Row 10: A10, B10, C10, D10, E10 (5 seats)
     const seats = [];
-    const rows = ['A', 'B', 'C', 'D', 'E'];
-    const seatsPerRow = 10; // Fixed 10 seats per row
+    const rows = ['A', 'B', 'C', 'D'];
     
-    for (let i = 0; i < rows.length; i++) {
-      for (let j = 1; j <= seatsPerRow; j++) {
+    // Create rows 1-9 with A, B, C, D
+    for (let rowNum = 1; rowNum <= 9; rowNum++) {
+      for (let i = 0; i < rows.length; i++) {
         seats.push({
           voyageId,
-          number: `${rows[i]}${j}`,
+          number: `${rows[i]}${rowNum}`,
           status: "available"
         });
       }
     }
+    
+    // Create row 10 with A, B, C, D, E
+    for (let i = 0; i < rows.length; i++) {
+      seats.push({
+        voyageId,
+        number: `${rows[i]}10`,
+        status: "available"
+      });
+    }
+    seats.push({
+      voyageId,
+      number: "E10",
+      status: "available"
+    });
 
     // Insert all seats
     const createdSeats = await Seat.insertMany(seats);
@@ -68,7 +84,7 @@ export const getSeats = async (req: Request, res: Response) => {
     }
 
     // First check voyage availability from VoyageSelection
-    const voyageSelection = await VoyageSelection.findById(voyageId);
+    const voyageSelection = await VoyageSelection.findById(voyageId).populate('voyage', 'routeName');
     if (!voyageSelection) {
       return res.status(404).json({ message: "Voyage not found" });
     }
@@ -76,8 +92,9 @@ export const getSeats = async (req: Request, res: Response) => {
     // Get all seats for this voyage (both available and booked)
     const seats = await Seat.find({ voyageId }).sort({ number: 1 });
     
-    // Count available and booked seats
+    // Count available, selected, and booked seats
     const availableSeats = seats.filter(seat => seat.status === "available");
+    const selectedSeats = seats.filter(seat => seat.status === "selected");
     const bookedSeats = seats.filter(seat => seat.status === "booked");
     
     res.json({
@@ -85,7 +102,7 @@ export const getSeats = async (req: Request, res: Response) => {
       voyageInfo: {
         busPlateNo: voyageSelection.busPlateNo,
         driver: voyageSelection.driver,
-        routeName: voyageSelection.routeName,
+        routeName: (voyageSelection.voyage as any)?.routeName,
         departureTime: voyageSelection.departureTime,
         arrivalTime: voyageSelection.arrivalTime,
         status: voyageSelection.status
@@ -100,6 +117,7 @@ export const getSeats = async (req: Request, res: Response) => {
         number: seat.number,
         status: seat.status,
         isAvailable: seat.status === "available",
+        isSelected: seat.status === "selected",
         isBooked: seat.status === "booked"
       }))
     });
@@ -136,26 +154,26 @@ export const bookSeats = async (req: Request, res: Response) => {
       });
     }
 
-    // Step 2: Check if specific seats exist and are available
-    const availableSeats = await Seat.find({ 
+    // Step 2: Check if specific seats exist and are selected
+    const selectedSeats = await Seat.find({ 
       voyageId, 
       number: { $in: seatNumbers }, 
-      status: "available" 
+      status: "selected" 
     });
 
-    if (availableSeats.length !== seatNumbers.length) {
+    if (selectedSeats.length !== seatNumbers.length) {
       return res.status(400).json({ 
-        message: "Some seats are not available", 
-        availableSeats: availableSeats.map(seat => seat.number),
-        unavailableSeats: seatNumbers.filter(seatNum => 
-          !availableSeats.some(seat => seat.number === seatNum)
+        message: "Some seats are not selected for booking", 
+        selectedSeats: selectedSeats.map(seat => seat.number),
+        unselectedSeats: seatNumbers.filter(seatNum => 
+          !selectedSeats.some(seat => seat.number === seatNum)
         )
       });
     }
 
     // Step 3: Update seats to booked status
     const updatedSeats = await Seat.updateMany(
-      { voyageId, number: { $in: seatNumbers }, status: "available" },
+      { voyageId, number: { $in: seatNumbers }, status: "selected" },
       { $set: { status: "booked" } }
     );
 
@@ -276,6 +294,103 @@ export const getAvailableSeats = async (req: Request, res: Response) => {
   }
 };
 
+// Select seats (temporary selection before booking)
+export const selectSeats = async (req: Request, res: Response) => {
+  try {
+    const { voyageId, seatNumbers } = req.body;
+
+    // Validate input
+    if (!voyageId || !seatNumbers || !Array.isArray(seatNumbers)) {
+      return res.status(400).json({ message: "Invalid input: voyageId and seatNumbers array are required" });
+    }
+
+    // Check if seats exist and are available
+    const availableSeats = await Seat.find({ 
+      voyageId, 
+      number: { $in: seatNumbers }, 
+      status: "available" 
+    });
+
+    if (availableSeats.length !== seatNumbers.length) {
+      return res.status(400).json({ 
+        message: "Some seats are not available", 
+        availableSeats: availableSeats.map(seat => seat.number),
+        unavailableSeats: seatNumbers.filter(seatNum => 
+          !availableSeats.some(seat => seat.number === seatNum)
+        )
+      });
+    }
+
+    // Update seats to selected status
+    const updatedSeats = await Seat.updateMany(
+      { voyageId, number: { $in: seatNumbers }, status: "available" },
+      { $set: { status: "selected" } }
+    );
+
+    res.json({ 
+      message: "Seats selected successfully", 
+      updatedSeats: updatedSeats.modifiedCount,
+      selectedSeats: seatNumbers
+    });
+  } catch (error) {
+    console.error("Error selecting seats:", error);
+    res.status(500).json({ message: "Error selecting seats" });
+  }
+};
+
+// Deselect seats (remove selection)
+export const deselectSeats = async (req: Request, res: Response) => {
+  try {
+    const { voyageId, seatNumbers } = req.body;
+
+    // Validate input
+    if (!voyageId || !seatNumbers || !Array.isArray(seatNumbers)) {
+      return res.status(400).json({ message: "Invalid input: voyageId and seatNumbers array are required" });
+    }
+
+    // Update seats back to available status
+    const updatedSeats = await Seat.updateMany(
+      { voyageId, number: { $in: seatNumbers }, status: "selected" },
+      { $set: { status: "available" } }
+    );
+
+    res.json({ 
+      message: "Seats deselected successfully", 
+      updatedSeats: updatedSeats.modifiedCount,
+      deselectedSeats: seatNumbers
+    });
+  } catch (error) {
+    console.error("Error deselecting seats:", error);
+    res.status(500).json({ message: "Error deselecting seats" });
+  }
+};
+
 // Get seat status for specific seats
+export const getSeatStatus = async (req: Request, res: Response) => {
+  try {
+    const { voyageId, seatNumbers } = req.body;
 
+    if (!voyageId || !seatNumbers || !Array.isArray(seatNumbers)) {
+      return res.status(400).json({ message: "Invalid input: voyageId and seatNumbers array are required" });
+    }
 
+    const seats = await Seat.find({ 
+      voyageId, 
+      number: { $in: seatNumbers }
+    });
+
+    res.json({
+      seats: seats.map(seat => ({
+        id: seat._id,
+        number: seat.number,
+        status: seat.status,
+        isAvailable: seat.status === "available",
+        isSelected: seat.status === "selected",
+        isBooked: seat.status === "booked"
+      }))
+    });
+  } catch (error) {
+    console.error("Error fetching seat status:", error);
+    res.status(500).json({ message: "Error fetching seat status" });
+  }
+};

@@ -11,16 +11,15 @@ import Voyagerouter from "./routes/voyage.routes";
 import Voyageselection from "./routes/VoyageSelection.routes";
 import seatRoutes from "./routes/seat.routes";
 import PassengerDetails from "./routes/PassengerDetails.routes";
+import ticketRoutes from "./routes/ticket.routes";
 
 
 dotenv.config();
 const app = express();
 
 app.use(express.json());
-const corsOrigin = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",").map((s) => s.trim())
-  : true;
-app.use(cors({ origin: corsOrigin as any, credentials: true }));
+
+
 
 // Routes
 app.use("/api/users", userRoutes);
@@ -32,6 +31,7 @@ app.use("/api/voyage", Voyagerouter);
 app.use("/api/voyageselection", Voyageselection);
 app.use("/api/seats", seatRoutes);
 app.use("/api/passengerdetails", PassengerDetails);
+app.use("/api/tickets", ticketRoutes);
 
 const PORT = Number(process.env.PORT) || 3000;
 const mongoUri = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/mechet-dashboard";

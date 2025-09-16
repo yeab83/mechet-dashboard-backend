@@ -1,200 +1,197 @@
-import { Request, Response } from "express";
-import Ticket from "../models/PassengerDetails";
-import Seat from "../models/seat";
+// controllers/passengerController.ts
+import { Request, Response } from 'express';
+import Passenger, { IPassenger } from '../models/PassengerDetails';
+import Ticket from '../models/ticket';
+import Voyage from '../models/voyage';
+import VoyageSelection from '../models/VoyageSelection';
+import Seat from '../models/seat';
+import mongoose from 'mongoose';
 
-// Create passenger information (UI form data)
-export const createPassengerInfo = async (req: Request, res: Response) => {
+// Create a new passenger and automatically create ticket
+export const createPassenger = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { fullName, phoneNumber, email } = req.body;
+    const { name, phone, email, voyageId, seatNo, farePrice, issuedBy } = req.body;
 
-    // Validate required fields
-    if (!fullName) {
-      return res.status(400).json({ message: "Full name is required" });
-    }
-    if (!phoneNumber) {
-      return res.status(400).json({ message: "Phone number is required" });
-    }
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
+    // Validation
+    if (!name || !phone || !voyageId || !seatNo || !farePrice || !issuedBy) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required fields: name, phone, voyageId, seatNo, farePrice, issuedBy'
+      });
+      return;
     }
 
-    // Create passenger information
-    const passengerInfo = new Ticket({
-      fullName,
-      phoneNumber,
-      email
+    // Validate voyageId format
+    if (!mongoose.Types.ObjectId.isValid(voyageId)) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid voyage ID format'
+      });
+      return;
+    }
+
+    // Check if passenger already exists for this voyage
+    const existingPassenger = await Passenger.findOne({
+      phone: phone,
+      voyageId: voyageId
     });
 
-    const savedPassenger = await passengerInfo.save();
+    if (existingPassenger) {
+      res.status(409).json({
+        success: false,
+        error: 'Passenger with this phone number already exists for this voyage'
+      });
+      return;
+    }
+
+    // Find voyage and voyage selection
+    const voyage = await Voyage.findById(voyageId);
+    if (!voyage) {
+      res.status(404).json({
+        success: false,
+        error: 'Voyage not found'
+      });
+      return;
+    }
+
+    const voyageSelection = await VoyageSelection.findOne({ voyage: voyageId });
+    if (!voyageSelection) {
+      res.status(404).json({
+        success: false,
+        error: 'Voyage selection not found for this voyage'
+      });
+      return;
+    }
+
+    // Check if seat is available
+    const seat = await Seat.findOne({ 
+      voyageId: voyageSelection._id, 
+      number: seatNo 
+    });
+
+    if (!seat) {
+      res.status(404).json({
+        success: false,
+        error: 'Seat not found'
+      });
+      return;
+    }
+
+    if (seat.status !== 'available') {
+      res.status(409).json({
+        success: false,
+        error: 'Seat is not available'
+      });
+      return;
+    }
+
+    // Create new passenger
+    const passenger = new Passenger({
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email ? email.trim().toLowerCase() : null,
+      voyageId: voyageId
+    });
+
+    const savedPassenger = await passenger.save();
+
+    // Create ticket automatically
+    const ticket = new Ticket({
+      name: name.trim(),
+      voyage: voyage.routeName,
+      seatNo: seatNo.trim(),
+      farePrice: Number(farePrice),
+      issuedBy: issuedBy.trim(),
+      paymentStatus: 'Pending',
+      passengerId: savedPassenger._id,
+      voyageId: voyageSelection._id
+    });
+
+    const savedTicket = await ticket.save();
+
+    // Update seat status to booked
+    await Seat.findByIdAndUpdate(seat._id, { status: 'booked' });
+
+    // Decrease available seats count
+    await VoyageSelection.findByIdAndUpdate(
+      voyageSelection._id,
+      { $inc: { availableSeats: -1 } }
+    );
+
+    // Populate ticket data for response
+    const populatedTicket = await Ticket.findById(savedTicket._id)
+      .populate('passengerId', 'name phone email')
+      .populate('voyageId', 'voyage busPlateNo driver departureTime arrivalTime status');
 
     res.status(201).json({
-      message: "Ticket issued successfully",
-      ticket: {
-        id: savedPassenger._id,
-        fullName: savedPassenger.fullName,
-        phoneNumber: savedPassenger.phoneNumber,
-        email: savedPassenger.email,
-        createdAt: savedPassenger.createdAt
+      success: true,
+      message: 'Passenger and ticket created successfully',
+      data: {
+        passenger: savedPassenger,
+        ticket: populatedTicket,
+        seatBooked: seatNo
       }
     });
+
   } catch (error) {
-    console.error("Error creating passenger information:", error);
-    res.status(500).json({ message: "Error creating passenger information" });
-  }
-};
-
-// Get passenger information by voyage ID
-export const getPassengerInfo = async (req: Request, res: Response) => {
-  try {
-    const { voyageId } = req.body;
-
-    if (!voyageId) {
-      return res.status(400).json({ message: "Voyage ID is required" });
-    }
-
-    const passengers = await Ticket.find({ voyage: voyageId }).sort({ createdAt: -1 });
-
-    res.json({
-      passengers: passengers.map(passenger => ({
-        id: passenger._id,
-        fullName: passenger.fullName,
-        phoneNumber: passenger.phoneNumber,
-        email: passenger.email,
-        createdAt: passenger.createdAt
-      }))
+    console.error('Error creating passenger and ticket:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create passenger and ticket'
     });
-  } catch (error) {
-    console.error("Error fetching passenger information:", error);
-    res.status(500).json({ message: "Error fetching passenger information" });
   }
 };
 
-// Update passenger information
-export const updatePassengerInfo = async (req: Request, res: Response) => {
+// Get all passengers
+export const getAllPassengers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { ticketId, fullName, phoneNumber, email } = req.body;
+    const passengers = await Passenger.find()
+      .populate('voyageId', 'routeName departureTime arrivalTime busPlateNo')
+      .sort({ createdAt: -1 });
 
-    if (!ticketId) {
-      return res.status(400).json({ message: "Ticket ID is required" });
-    }
-
-    const passenger = await Ticket.findById(ticketId);
-
-    if (!passenger) {
-      return res.status(404).json({ 
-        message: `No ticket found with ID ${ticketId}` 
-      });
-    }
-
-    // Update passenger information
-    if (fullName) passenger.fullName = fullName;
-    if (phoneNumber) passenger.phoneNumber = phoneNumber;
-    if (email) passenger.email = email;
-
-    const updatedPassenger = await passenger.save();
-
-    res.json({
-      message: "Ticket updated successfully",
-      ticket: {
-        id: updatedPassenger._id,
-        fullName: updatedPassenger.fullName,
-        phoneNumber: updatedPassenger.phoneNumber,
-        email: updatedPassenger.email,
-        createdAt: updatedPassenger.createdAt
-      }
+    res.status(200).json({
+      success: true,
+      count: passengers.length,
+      data: passengers
     });
+
   } catch (error) {
-    console.error("Error updating passenger information:", error);
-    res.status(500).json({ message: "Error updating passenger information" });
+    console.error('Error fetching passengers:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch passengers'
+    });
   }
 };
 
-// Delete passenger information
-export const deletePassengerInfo = async (req: Request, res: Response) => {
-  try {
-    const { ticketId } = req.body;
-
-    if (!ticketId) {
-      return res.status(400).json({ message: "Ticket ID is required" });
-    }
-
-    const passenger = await Ticket.findByIdAndDelete(ticketId);
-
-    if (!passenger) {
-      return res.status(404).json({ 
-        message: `No ticket found with ID ${ticketId}` 
-      });
-    }
-
-    res.json({
-      message: "Ticket deleted successfully",
-      deletedTicket: {
-        id: passenger._id,
-        fullName: passenger.fullName,
-        email: passenger.email
-      }
-    });
-  } catch (error) {
-    console.error("Error deleting passenger information:", error);
-    res.status(500).json({ message: "Error deleting passenger information" });
-  }
-};
-
-// Get all passengers for a voyage
-export const getVoyagePassengers = async (req: Request, res: Response) => {
+// Get passengers by voyage
+export const getPassengersByVoyage = async (req: Request, res: Response): Promise<void> => {
   try {
     const { voyageId } = req.params;
 
-    const passengers = await Ticket.find({ voyage: voyageId }).sort({ createdAt: -1 });
+    if (!mongoose.Types.ObjectId.isValid(voyageId)) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid voyage ID format'
+      });
+      return;
+    }
 
-    res.json({
-      voyageId,
-      totalTickets: passengers.length,
-      tickets: passengers.map(passenger => ({
-        id: passenger._id,
-        fullName: passenger.fullName,
-        phoneNumber: passenger.phoneNumber,
-        email: passenger.email,
-        createdAt: passenger.createdAt
-      }))
+    const passengers = await Passenger.find({ voyageId })
+      .populate('voyageId', 'routeName departureTime arrivalTime busPlateNo')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: passengers.length,
+      data: passengers
     });
+
   } catch (error) {
-    console.error("Error fetching voyage passengers:", error);
-    res.status(500).json({ message: "Error fetching voyage passengers" });
-  }
-};
-
-// Legacy functions for backward compatibility
-export const createTickets = async (req: Request, res: Response) => {
-  const ticketsData = req.body;
-
-  if (!Array.isArray(ticketsData) || ticketsData.length === 0) {
-    return res.status(400).json({ message: "No passenger data provided" });
-  }
-
-  try {
-    const tickets = ticketsData.map(p => ({
-      passengerName: p.name,
-      voyage: p.voyage,
-      seatNo: p.seatNumber,
-      farePrice: p.farePrice || 500,
-      issuedBy: p.issuedBy || "System",
-      paymentStatus: p.paymentStatus || "Pending",
-    }));
-
-    const createdTickets = await Ticket.insertMany(tickets);
-    res.status(201).json({ message: "Tickets created successfully", tickets: createdTickets });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-export const getTickets = async (req: Request, res: Response) => {
-  try {
-    const tickets = await Ticket.find();
-    res.json(tickets);
-  } catch (error) {
-    res.status(500).json({ message: "Server error" });
+    console.error('Error fetching passengers by voyage:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch passengers'
+    });
   }
 };

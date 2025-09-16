@@ -3,7 +3,7 @@ import Voyage from "../models/VoyageSelection";
 
 export const getVoyageselection = async (req: Request, res: Response) => {
   try {
-    const voyages = await Voyage.find();
+    const voyages = await Voyage.find().populate('voyage', 'routeName');
     res.json(voyages);
   } catch (error) {
     console.error("Error fetching voyage selections:", error);
@@ -15,6 +15,9 @@ export const createVoyageselection = async (req: Request, res: Response) => {
   try {
     const voyage = new Voyage(req.body);
     const savedVoyage = await voyage.save();
+    
+    // Populate the voyage reference to get routeName
+    const populatedVoyage = await Voyage.findById(savedVoyage._id).populate('voyage', 'routeName');
     
     // Automatically create seats for this voyage
     const Seat = require('../models/seat').default;
@@ -40,7 +43,7 @@ export const createVoyageselection = async (req: Request, res: Response) => {
     
     res.status(201).json({
       message: "Voyage selection created with seats",
-      voyage: savedVoyage,
+      voyage: populatedVoyage,
       seatsCreated: createdSeats.length,
       seats: createdSeats.map((seat: any) => ({
         id: seat._id,
