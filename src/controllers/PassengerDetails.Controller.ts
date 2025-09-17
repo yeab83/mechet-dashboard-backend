@@ -10,19 +10,19 @@ import mongoose from 'mongoose';
 // Create a new passenger and automatically create ticket
 export const createPassenger = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, phone, email, voyageId, seatNo, farePrice, issuedBy } = req.body;
+    const { name, phone, email, voyageId, voyageSelectionId, seatId, seatNo, farePrice, issuedBy } = req.body;
 
-    // Validation
-    if (!name || !phone || !voyageId || !seatNo || !farePrice || !issuedBy) {
+    // Validation - prioritize seatNo over seatId
+    if (!name || !phone || (!voyageId && !voyageSelectionId) || (!seatNo && !seatId) || !farePrice || !issuedBy) {
       res.status(400).json({
         success: false,
-        error: 'Missing required fields: name, phone, voyageId, seatNo, farePrice, issuedBy'
+        error: 'Missing required fields: name, phone, (voyageId or voyageSelectionId), (seatNo or seatId), farePrice, issuedBy'
       });
       return;
     }
 
-    // Validate voyageId format
-    if (!mongoose.Types.ObjectId.isValid(voyageId)) {
+    // Validate provided IDs format
+    if (voyageId && !mongoose.Types.ObjectId.isValid(voyageId)) {
       res.status(400).json({
         success: false,
         error: 'Invalid voyage ID format'
@@ -30,10 +30,52 @@ export const createPassenger = async (req: Request, res: Response): Promise<void
       return;
     }
 
+    if (voyageSelectionId && !mongoose.Types.ObjectId.isValid(voyageSelectionId)) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid voyage selection ID format'
+      });
+      return;
+    }
+
+    // Resolve voyage and voyageSelection
+    let resolvedVoyageId = voyageId as string;
+    let resolvedVoyageSelectionId: string | undefined = voyageSelectionId as string | undefined;
+
+    if (voyageSelectionId && !voyageId) {
+      const selectionDoc = await VoyageSelection.findById(voyageSelectionId).select('voyage');
+      if (!selectionDoc) {
+        res.status(404).json({ success: false, error: 'Voyage selection not found' });
+        return;
+      }
+      resolvedVoyageId = selectionDoc.voyage?.toString();
+      resolvedVoyageSelectionId = voyageSelectionId;
+    }
+
+    // If both provided, ensure they match
+    if (voyageId && voyageSelectionId) {
+      const selectionDoc = await VoyageSelection.findById(voyageSelectionId).select('voyage');
+      if (!selectionDoc) {
+        res.status(404).json({ success: false, error: 'Voyage selection not found' });
+        return;
+      }
+      if (selectionDoc.voyage?.toString() !== voyageId.toString()) {
+        res.status(400).json({ success: false, error: 'voyageId does not match voyageSelectionId' });
+        return;
+      }
+      resolvedVoyageSelectionId = voyageSelectionId;
+    }
+
+    // Ensure we have resolvedVoyageId
+    if (!resolvedVoyageId) {
+      res.status(400).json({ success: false, error: 'Unable to resolve voyageId from voyageSelectionId' });
+      return;
+    }
+
     // Check if passenger already exists for this voyage
     const existingPassenger = await Passenger.findOne({
       phone: phone,
-      voyageId: voyageId
+      voyageId: resolvedVoyageId
     });
 
     if (existingPassenger) {
@@ -45,7 +87,7 @@ export const createPassenger = async (req: Request, res: Response): Promise<void
     }
 
     // Find voyage and voyage selection
-    const voyage = await Voyage.findById(voyageId);
+    const voyage = await Voyage.findById(resolvedVoyageId);
     if (!voyage) {
       res.status(404).json({
         success: false,
@@ -54,7 +96,10 @@ export const createPassenger = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const voyageSelection = await VoyageSelection.findOne({ voyage: voyageId });
+    // Determine voyageSelection
+    const voyageSelection = resolvedVoyageSelectionId
+      ? await VoyageSelection.findById(resolvedVoyageSelectionId)
+      : await VoyageSelection.findOne({ voyage: resolvedVoyageId });
     if (!voyageSelection) {
       res.status(404).json({
         success: false,
@@ -63,11 +108,40 @@ export const createPassenger = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    // Check if seat is available
-    const seat = await Seat.findOne({ 
-      voyageId: voyageSelection._id, 
-      number: seatNo 
-    });
+    // Find the seat - prioritize seatNo over seatId
+    let seat;
+    if (seatNo) {
+      // Find by seatNo (preferred method)
+      seat = await Seat.findOne({ 
+        voyageId: voyageSelection._id, 
+        number: seatNo 
+      });
+      if (!seat) {
+        res.status(404).json({
+          success: false,
+          error: `Seat ${seatNo} not found for this VoyageSelection`
+        });
+        return;
+      }
+    } else if (seatId) {
+      // Find by seatId (fallback method)
+      seat = await Seat.findById(seatId);
+      if (!seat) {
+        res.status(404).json({
+          success: false,
+          error: 'Seat not found'
+        });
+        return;
+      }
+      // Verify seat belongs to this VoyageSelection
+      if (seat.voyageId.toString() !== (voyageSelection._id as string).toString()) {
+        res.status(400).json({
+          success: false,
+          error: 'Seat does not belong to this VoyageSelection'
+        });
+        return;
+      }
+    }
 
     if (!seat) {
       res.status(404).json({
@@ -90,7 +164,7 @@ export const createPassenger = async (req: Request, res: Response): Promise<void
       name: name.trim(),
       phone: phone.trim(),
       email: email ? email.trim().toLowerCase() : null,
-      voyageId: voyageId
+      voyageId: resolvedVoyageId
     });
 
     const savedPassenger = await passenger.save();
@@ -99,7 +173,7 @@ export const createPassenger = async (req: Request, res: Response): Promise<void
     const ticket = new Ticket({
       name: name.trim(),
       voyage: voyage.routeName,
-      seatNo: seatNo.trim(),
+      seatNo: seat.number, // Use seat number from found seat
       farePrice: Number(farePrice),
       issuedBy: issuedBy.trim(),
       paymentStatus: 'Pending',
@@ -125,19 +199,21 @@ export const createPassenger = async (req: Request, res: Response): Promise<void
 
     res.status(201).json({
       success: true,
-      message: 'Passenger and ticket created successfully',
+      message: `Passenger and ticket created successfully for seat ${seat.number}`,
       data: {
         passenger: savedPassenger,
         ticket: populatedTicket,
-        seatBooked: seatNo
+        seatBooked: seat.number,
+        seatId: seat._id
       }
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating passenger and ticket:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to create passenger and ticket'
+      error: 'Failed to create passenger and ticket',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -155,11 +231,12 @@ export const getAllPassengers = async (req: Request, res: Response): Promise<voi
       data: passengers
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching passengers:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch passengers'
+      error: 'Failed to fetch passengers',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -187,11 +264,12 @@ export const getPassengersByVoyage = async (req: Request, res: Response): Promis
       data: passengers
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching passengers by voyage:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch passengers'
+      error: 'Failed to fetch passengers',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };

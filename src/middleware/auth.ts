@@ -20,3 +20,6 @@ export function authRequired(req: AuthRequest, res: Response, next: NextFunction
     return res.status(401).json({ message: "Invalid token" });
   }
 }
+
+// Alias for authRequired
+export const authenticateToken = authRequired;

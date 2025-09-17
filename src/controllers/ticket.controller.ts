@@ -189,7 +189,7 @@ export const getAllTickets = async (req: Request, res: Response): Promise<void> 
   try {
     const tickets = await Ticket.find()
       .populate('passengerId', 'name phone email')
-      .populate('voyageId', 'voyage busPlateNo driver departureTime arrivalTime status')
+      .populate('voyageId', 'routeName busPlateNo driver departureTime arrivalTime status')
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -214,7 +214,7 @@ export const getTicketById = async (req: Request, res: Response): Promise<void> 
 
     const ticket = await Ticket.findById(id)
       .populate('passengerId', 'name phone email')
-      .populate('voyageId', 'voyage busPlateNo driver departureTime arrivalTime status');
+      .populate('voyageId', 'routeName busPlateNo driver departureTime arrivalTime status');
 
     if (!ticket) {
       res.status(404).json({
@@ -245,7 +245,7 @@ export const getTicketsByVoyage = async (req: Request, res: Response): Promise<v
 
     const tickets = await Ticket.find({ voyageId })
       .populate('passengerId', 'name phone email')
-      .populate('voyageId', 'voyage busPlateNo driver departureTime arrivalTime status')
+      .populate('voyageId', 'routeName busPlateNo driver departureTime arrivalTime status')
       .sort({ createdAt: -1 });
 
     res.status(200).json({

@@ -6,10 +6,12 @@ export interface IUser extends Document {
   fname: string;
   email: string;
   phone: string;
-    password: string;
+  password: string;
   role: string;
   status: UserStatus;
   avatarUrl?: string;
+  resetPasswordCode?: string;
+  resetPasswordExpires?: Date;
 }
 
 const UserSchema = new Schema<IUser>(
@@ -21,6 +23,8 @@ const UserSchema = new Schema<IUser>(
     role: { type: String, required: true },
     status: { type: String, enum: ["Active", "Inactive"], default: "Active" },
     avatarUrl: { type: String, default: "" },
+    resetPasswordCode: { type: String },
+    resetPasswordExpires: { type: Date },
   },
   { timestamps: true }
 );
