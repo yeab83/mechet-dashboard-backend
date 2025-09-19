@@ -87,7 +87,8 @@ export const createPassenger = async (req: Request, res: Response): Promise<void
     }
 
     // Find voyage and voyage selection
-    const voyage = await Voyage.findById(resolvedVoyageId);
+    const voyage = await Voyage.findById(resolvedVoyageId)
+      .populate('route', 'routeName from to');
     if (!voyage) {
       res.status(404).json({
         success: false,
@@ -172,7 +173,7 @@ export const createPassenger = async (req: Request, res: Response): Promise<void
     // Create ticket automatically
     const ticket = new Ticket({
       name: name.trim(),
-      voyage: voyage.routeName,
+      voyage: voyage.route?.routeName || 'Unknown Route',
       seatNo: seat.number, // Use seat number from found seat
       farePrice: Number(farePrice),
       issuedBy: issuedBy.trim(),

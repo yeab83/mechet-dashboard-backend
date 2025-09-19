@@ -7,6 +7,7 @@ export interface IBus extends Document {
   manufacturedYear: number;
   sideNumber?: string;
   busPlateNumber: string;
+  driver: string;
   status: 'Active' | 'Inactive';
   createdAt: Date;
   updatedAt: Date;
@@ -20,6 +21,7 @@ const BusSchema = new Schema<IBus>(
     manufacturedYear: { type: Number, required: true },
     sideNumber: { type: String, default: '' },
     busPlateNumber: { type: String, required: true, unique: true },
+    driver: { type: String, required: true },
     status: { type: String, enum: ['Active', 'Inactive'], default: 'Active' },
   },
   { timestamps: true }

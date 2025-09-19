@@ -1,7 +1,7 @@
 // routes/user.route.ts
 import { Router } from "express";
 
-import {  deleteUser, getUsers, login, register, updateUser, me, updateProfile, changePassword, forgotPassword, verifyResetCode, resetPassword } from "../controllers/user.Controller";
+import {  deleteUser, getUsers, getDrivers, getValidators, getUsersByRole, getAvailableRoles, login, register, updateUser, me, updateProfile, changePassword, forgotPassword, verifyResetCode, resetPassword } from "../controllers/user.Controller";
 import { authenticateToken } from "../middleware/auth";
 
 const router = Router();
@@ -29,6 +29,18 @@ router.put("/change-password", authenticateToken, changePassword);
 
 // GET all users
 router.get("/",getUsers);
+
+// GET all drivers
+router.get("/drivers", getDrivers);
+
+// GET all validators
+router.get("/validators", getValidators);
+
+// GET users by role
+router.get("/role/:role", getUsersByRole);
+
+// GET all available roles
+router.get("/roles", getAvailableRoles);
 
 // POST create user
 

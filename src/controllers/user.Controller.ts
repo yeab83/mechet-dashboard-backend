@@ -253,6 +253,51 @@ export const getUsers = async (req: Request, res: Response) => {
   }
 };
 
+// GET all drivers
+export const getDrivers = async (req: Request, res: Response) => {
+  try {
+    const drivers = await UserModel.find({ role: "Driver" }).select('_id fname email phone role status');
+    res.json(drivers);
+  } catch (err) {
+    console.error('Error fetching drivers:', err);
+    res.status(500).json({ message: "Error fetching drivers" });
+  }
+};
+
+// GET all validators
+export const getValidators = async (req: Request, res: Response) => {
+  try {
+    const validators = await UserModel.find({ role: "Ticketer and Validator" }).select('_id fname email phone role status');
+    res.json(validators);
+  } catch (err) {
+    console.error('Error fetching validators:', err);
+    res.status(500).json({ message: "Error fetching validators" });
+  }
+};
+
+// GET users by role
+export const getUsersByRole = async (req: Request, res: Response) => {
+  try {
+    const { role } = req.params;
+    const users = await UserModel.find({ role: role }).select('_id fname email phone role status');
+    res.json(users);
+  } catch (err) {
+    console.error('Error fetching users by role:', err);
+    res.status(500).json({ message: "Error fetching users by role" });
+  }
+};
+
+// GET all available roles
+export const getAvailableRoles = async (_req: Request, res: Response) => {
+  try {
+    const roles = await UserModel.distinct('role');
+    res.json(roles);
+  } catch (err) {
+    console.error('Error fetching roles:', err);
+    res.status(500).json({ message: "Error fetching roles" });
+  }
+};
+
 
 
 // Update user
